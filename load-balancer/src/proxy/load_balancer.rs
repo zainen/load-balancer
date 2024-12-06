@@ -1,10 +1,13 @@
-use std::{error::Error, net::SocketAddr, str::FromStr, sync::Arc, time::Duration};
 use rand::prelude::*;
+use std::{net::SocketAddr, str::FromStr, sync::Arc, thread::sleep, time::Duration};
 
 use tokio::{
-    io::copy_bidirectional,
-    net::{TcpListener, TcpStream}, sync::RwLock,
+    io::{copy_bidirectional, AsyncReadExt, AsyncWriteExt},
+    net::{TcpListener, TcpStream},
+    sync::RwLock,
 };
+
+use futures::FutureExt;
 
 #[derive(Debug)]
 enum LoadBalancerAlgorithm {
@@ -13,12 +16,13 @@ enum LoadBalancerAlgorithm {
     LeastConnections,
 }
 
-use futures::FutureExt;
+
 #[derive(Debug)]
 pub struct LoadBalancer {
-    workers: Vec<Arc<SocketAddr>>,
+    workers: Arc<Vec<Arc<SocketAddr>>>,
     current_worker: Arc<RwLock<usize>>,
     algorith: LoadBalancerAlgorithm,
+    health_check_interval: Duration,
 }
 
 impl LoadBalancer {
@@ -32,10 +36,10 @@ impl LoadBalancer {
         }
 
         Self {
-            workers,
+            workers: Arc::new(workers),
             current_worker: Arc::new(RwLock::new(0)),
             algorith: LoadBalancerAlgorithm::LeastConnections,
-
+            health_check_interval: Duration::from_secs(60),
         }
     }
     pub async fn get_next(&mut self) -> Arc<SocketAddr> {
@@ -46,7 +50,7 @@ impl LoadBalancer {
                 let worker = self.workers.get(*current).unwrap();
                 *current = (*current + 1) % self.workers.len();
                 worker.clone()
-            },
+            }
             LoadBalancerAlgorithm::Random => {
                 let num_workers = self.workers.len();
                 let mut rng = rand::thread_rng();
@@ -58,14 +62,12 @@ impl LoadBalancer {
                 *current = rand_num as usize;
 
                 worker.clone()
-
-
-            },
+            }
             LoadBalancerAlgorithm::LeastConnections => {
                 let current_count = self.current_worker_counts();
                 println!("{current_count:?}");
                 let min_value = current_count.iter().min().unwrap();
-                let index = current_count.iter().position(|x| x == min_value); 
+                let index = current_count.iter().position(|x| x == min_value);
                 println!("lowest used index: {:?}", index);
                 self.workers[index.unwrap_or(0)].clone()
             }
@@ -80,7 +82,43 @@ impl LoadBalancer {
         workers_count
     }
 
-    pub async fn run(&mut self, listener: TcpListener) -> Result<(), Box<dyn Error>> {
+    pub async fn run(&mut self, listener: TcpListener) -> std::io::Result<()> {
+        let workers = self.workers.clone();
+        let duration = self.health_check_interval.clone();
+
+        // Task spawned checking health of each worker 
+        tokio::task::spawn(async move {
+            loop {
+                for worker in workers.iter() {
+                    let stream = TcpStream::connect(**worker).await;
+
+                    if let Ok(mut stream) = stream {
+                        let _ = stream
+                            .write_all(
+                                format!(
+                        "GET /health_check HTTP/1.1\r\nHost: {}\r\nConnection: close\r\n\r\n",
+                        worker
+                    )
+                                .as_bytes(),
+                            )
+                            .await;
+
+                        let mut buf = Vec::new();
+                        let _ = stream.read_to_end(&mut buf).await;
+                        
+                        let response = String::from_utf8_lossy(&buf);
+                        
+                        let status_code = response.lines().next().unwrap_or("");
+                        println!("{status_code}")
+                    } else {
+                        eprintln!("Failed to connect to worker for health check: {worker:?}")
+                    }
+                }
+
+                sleep(duration);
+            }
+        });
+
         while let Ok((mut inbound, _)) = listener.accept().await {
             let outbound_addr = self.get_next().await;
 

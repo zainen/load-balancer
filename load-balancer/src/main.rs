@@ -1,11 +1,11 @@
-use std::{error::Error, net::SocketAddr, str::FromStr};
+use std::{net::SocketAddr, str::FromStr};
 
 use load_balancer::app::LoadBalancer;
 use tokio::net::TcpListener;
 
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
+async fn main() -> std::io::Result<()> {
     let worker_hosts = vec![
         "127.0.0.1:8000".to_string(),
         "127.0.0.1:8001".to_string(),
