@@ -1,8 +1,8 @@
-use std::sync::Arc;
+use std::{sync::Arc, thread::sleep, time::Duration};
 use tracing::{event, Level};
 
 use tokio::{
-    io::copy_bidirectional,
+    io::{copy_bidirectional, AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
     sync::RwLock,
 };
@@ -22,6 +22,7 @@ pub enum LoadBalancerAlgorithm {
 pub struct LoadBalancer {
     workers: Arc<RwLock<Workers>>,
     algorithm: LoadBalancerAlgorithm,
+    health_check_interval: Duration,
 }
 
 impl LoadBalancer {
@@ -31,17 +32,18 @@ impl LoadBalancer {
         Self {
             workers: Arc::new(RwLock::new(workers)),
             algorithm: LoadBalancerAlgorithm::LeastConnections,
+            health_check_interval: Duration::from_secs(60),
         }
     }
 
     pub async fn run(&mut self, listener: TcpListener) -> std::io::Result<()> {
-        // let workers = self.workers.worker_addrs.clone();
+        // let workers = self.workers.clone();
         // let duration = self.health_check_interval.clone();
-
+        //
         // // Task spawned checking health of each worker
         // tokio::spawn(async move {
         //     loop {
-        //         for worker in workers.iter() {
+        //         for worker in workers.write().await.worker_addrs.iter() {
         //             let stream = TcpStream::connect(**worker).await;
         //
         //             if let Ok(mut stream) = stream {
@@ -72,7 +74,8 @@ impl LoadBalancer {
         // });
 
         while let Ok((mut inbound, _)) = listener.accept().await {
-            let outbound_addr = self.workers.clone().write().await.get_next(self.algorithm.clone()).await;
+            let workers = self.workers.clone();
+            let outbound_addr = workers.write().await.get_next(self.algorithm.clone()).await;
             event!(Level::INFO, "Incoming Stream sent to {}", outbound_addr);
 
             let mut outbound = TcpStream::connect(*outbound_addr).await?;
@@ -87,6 +90,7 @@ impl LoadBalancer {
                         }
                     })
                     .await;
+                workers.write().await.decrease_worker_count(*outbound_addr);
             });
         }
         Ok(())
