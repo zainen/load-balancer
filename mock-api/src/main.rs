@@ -1,6 +1,6 @@
 use std::{thread::sleep, time::Duration};
 
-use axum::{http::StatusCode, response::IntoResponse, routing::get, Json, Router};
+use axum::{http::StatusCode, response::IntoResponse, routing::{get, post}, Json, Router};
 
 use serde::Serialize;
 
@@ -39,8 +39,14 @@ impl IntoResponse for ApiError {
 }
 
 async fn work() -> String {
-    sleep(Duration::from_millis(10));
+    println!("Incoming request");
+    sleep(Duration::from_millis(1000));
     format!("hello from server {}", PORT.to_string())
+}
+
+async fn home() -> String {
+    sleep(Duration::from_millis(10));
+    format!("Hit home: {}", PORT.to_string())
 }
 
 async fn health_check() -> Result<impl IntoResponse, ApiError> {
@@ -51,7 +57,9 @@ async fn health_check() -> Result<impl IntoResponse, ApiError> {
 async fn main() {
 
     let app = Router::new()
+        .route("/", get(home))
         .route("/work", get(work))
+        .route("/work", post(work))
         .route("/health_check", get(health_check));
 
     let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{}", PORT.to_string())).await.unwrap();
