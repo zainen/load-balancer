@@ -1,4 +1,5 @@
 use rand::prelude::*;
+use tokio::sync::RwLock;
 use std::{collections::HashMap, net::SocketAddr, str::FromStr, sync::Arc};
 
 use tracing::{event, Level};
@@ -11,6 +12,7 @@ pub struct Workers {
     pub workers_health: HashMap<SocketAddr, bool>,
     pub current_worker: usize,
     pub current_worker_loads: HashMap<SocketAddr, usize>,
+    pub algorithm: LoadBalancerAlgorithm,
 }
 
 impl Workers {
@@ -31,13 +33,16 @@ impl Workers {
             workers_health: workers_health_map,
             current_worker: 0,
             current_worker_loads: worker_loads_map,
+            algorithm: LoadBalancerAlgorithm::Random,
         }
     }
 
-    pub async fn get_next(&mut self, lb_algorithm: LoadBalancerAlgorithm) -> Arc<SocketAddr> {
-        event!(Level::INFO, "Current Algorithm: {:?}", lb_algorithm);
+    pub async fn get_next(&mut self) -> Arc<SocketAddr> {
+        self.optimal_algorithm();
+        let lb = self.algorithm.clone();
+        event!(Level::INFO, "Current Algorithm: {:?}", lb);
 
-        let worker = match lb_algorithm {
+        let worker = match lb {
             LoadBalancerAlgorithm::RoundRobin => {
                 // Use a round-robin strategy to select a worker
                 let worker = self.worker_addrs.get(self.current_worker).unwrap().clone();
@@ -62,13 +67,12 @@ impl Workers {
                     .worker_addrs
                     .iter()
                     .find(|worker| **worker == Arc::new(*addr))
-                    .clone()
                     .unwrap()
                     .clone();
                 worker
             }
         };
-
+        println!("{:?}", self.current_worker_loads);
         self.increase_worker_count(&worker);
         worker
     }
@@ -97,5 +101,31 @@ impl Workers {
 
     pub fn update_healthy_workers(&mut self, updated_map: HashMap<SocketAddr, bool>) {
         self.workers_health = updated_map;
+    }
+
+    fn optimal_algorithm (&mut self) {
+        let loads = self.current_worker_loads.clone().into_values().collect::<Vec<usize>>();
+
+        let mut values: Vec<&usize> = loads.iter().collect();
+        
+        values.sort_by(|a, b| a.cmp(b));
+
+        let max = values[values.len() - 1];
+        let min = values[0];
+        let algorithm_candidate: LoadBalancerAlgorithm;
+        if max - min > 10 {
+            algorithm_candidate = LoadBalancerAlgorithm::LeastConnections;
+        } else if max - min > 5 {
+            algorithm_candidate = LoadBalancerAlgorithm::Random;
+        } else {
+            algorithm_candidate = LoadBalancerAlgorithm::RoundRobin
+        }
+
+        if self.algorithm != algorithm_candidate {
+            
+            event!(Level::WARN, "Algorithm switched: {:?}", algorithm_candidate);
+            self.algorithm = algorithm_candidate;
+        }
+
     }
 }

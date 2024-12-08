@@ -2,6 +2,7 @@ use std::{thread::sleep, time::Duration};
 
 use axum::{http::StatusCode, response::IntoResponse, routing::{get, post}, Json, Router};
 
+use rand::Rng;
 use serde::Serialize;
 
 mod constants;
@@ -40,11 +41,14 @@ impl IntoResponse for ApiError {
 
 async fn work() -> String {
     println!("Incoming request");
-    sleep(Duration::from_millis(1000));
+    let mut rng = rand::thread_rng();
+    let random_number = rng.gen_range(10..=50);
+    sleep(Duration::from_millis(random_number * 100));
     format!("hello from server {}", PORT.to_string())
 }
 
 async fn home() -> String {
+
     sleep(Duration::from_millis(10));
     format!("Hit home: {}", PORT.to_string())
 }
