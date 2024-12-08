@@ -14,7 +14,7 @@ use crate::app::read_status_code;
 
 use super::workers::Workers;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum LoadBalancerAlgorithm {
     RoundRobin,
     Random,
@@ -24,7 +24,6 @@ pub enum LoadBalancerAlgorithm {
 #[derive(Debug)]
 pub struct LoadBalancer {
     workers: Arc<RwLock<Workers>>,
-    algorithm: LoadBalancerAlgorithm,
     health_check_interval: Duration,
 }
 
@@ -34,7 +33,6 @@ impl LoadBalancer {
 
         Self {
             workers: Arc::new(RwLock::new(workers)),
-            algorithm: LoadBalancerAlgorithm::LeastConnections,
             health_check_interval: Duration::from_secs(60),
         }
     }
@@ -91,22 +89,31 @@ impl LoadBalancer {
 
         while let Ok((mut inbound, _)) = listener.accept().await {
             let workers = self.workers.clone();
-            let outbound_addr = workers.write().await.get_next(self.algorithm.clone()).await;
-            event!(Level::INFO, "Incoming Stream sent to {}", outbound_addr);
+            let outbound_addr = workers.write().await.get_next().await;
+            event!(
+                Level::INFO,
+                "Incoming request {:?} sent to {}",
+                inbound,
+                outbound_addr
+            );
 
             let mut outbound = TcpStream::connect(*outbound_addr).await?;
-            println!("forwarding to {:?}", outbound_addr);
 
             tokio::spawn(async move {
                 // TODO handle return of of bidirectional result
                 copy_bidirectional(&mut inbound, &mut outbound)
                     .map(|r| {
                         if let Err(e) = r {
-                            eprintln!("Failed to transfer. Error: {:?}", e);
+                            event!(Level::ERROR, "Failed to transfer. Error: {:?}", e);
                         }
                     })
                     .await;
                 workers.write().await.decrease_worker_count(*outbound_addr);
+                event!(
+                    Level::INFO,
+                    "Response Sent: counts: {:?}",
+                    workers.read().await.current_worker_loads
+                )
             });
         }
         Ok(())
