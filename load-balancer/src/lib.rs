@@ -2,6 +2,7 @@ pub mod proxy;
 pub mod utils;
 
 pub mod app {
-    pub use crate::proxy::load_balancer::LoadBalancer;
+    pub use crate::proxy::load_balancer::{LoadBalancer, LoadBalancerAlgorithm};
+    pub use crate::utils::stream_reader::*;
     pub use crate::utils::tracing::*;
 }
