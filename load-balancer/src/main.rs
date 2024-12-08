@@ -10,7 +10,7 @@ async fn main() -> std::io::Result<()> {
     let worker_hosts = vec![
         "127.0.0.1:8000".to_string(),
         "127.0.0.1:8001".to_string(),
-        // "127.0.0.1:8002".to_string(),
+        "127.0.0.1:8002".to_string(),
         // "127.0.0.1:8003".to_string(),
         // "127.0.0.1:8004".to_string(),
     ];
