@@ -3,6 +3,13 @@ name = "load-balancer"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "load_balancer"
+path = "src/main.rs"
+
 [dependencies]
 futures = "0.3.31"
 rand = "0.8.5"
@@ -11,3 +18,7 @@ tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["registry", "env-filter"]}
 tracing-error = "0.2.0"
 color-eyre = "0.6.3"
+sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "migrate"] }
+async-trait = "0.1.78"
+dotenvy = "0.15.7"
+lazy_static = "1.5.0"
