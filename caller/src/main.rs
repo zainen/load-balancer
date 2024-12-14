@@ -1,4 +1,4 @@
-use std::{thread::sleep, time::Duration};
+use std::{thread::sleep, time::{Duration, Instant}};
 
 use rand::Rng;
 
@@ -6,7 +6,8 @@ use rand::Rng;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut rng = rand::thread_rng();
-
+    
+    let start = Instant::now();
     for n in 0..1000 {
         println!("{}", n);
         tokio::task::spawn(async move {
@@ -17,7 +18,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Err(_) => println!("Failed to get response")
             };
         });
-        let random_number = rng.clone().gen_range(50..=300);
+        let random_number = rng.clone().gen_range(50..=150);
         sleep(Duration::from_millis(random_number))
     }
     
@@ -33,6 +34,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             };
         });
     }
+    println!("-----------------------> total time: {:.2?}", start.elapsed());
     sleep(Duration::from_secs(60));
 
     Ok(())

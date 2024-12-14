@@ -1,5 +1,6 @@
 pub mod proxy;
 pub mod utils;
+pub mod services;
 
 pub mod app {
     pub use crate::proxy::load_balancer::{LoadBalancer, LoadBalancerAlgorithm};
